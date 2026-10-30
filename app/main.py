@@ -125,6 +125,7 @@ def index(request: Request):
             ),
             last_scan=db.scalar(select(ScanRun).order_by(desc(ScanRun.started_at)).limit(1)),
             top=db.scalars(select(Opportunity).order_by(desc(Opportunity.score)).limit(5)).all(),
+            c411=c411.summary(),
         )
 
 

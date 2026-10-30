@@ -233,6 +233,25 @@ def test_manual_download_is_blocked_with_the_reason(api, grabbing):
     assert grabbing.urls == []
 
 
+def test_dashboard_shows_the_ratio_card(api):
+    api(FakeResponse(profile()))
+    page = TestClient(main.app).get("/").text
+    assert "Ratio C411" in page
+    assert "Marge 87.5 Go" in page
+
+
+def test_dashboard_stays_available_when_the_api_fails(api):
+    api(FakeResponse(status_code=401))
+    page = TestClient(main.app).get("/")
+    assert page.status_code == 200
+    assert "Vérification impossible" in page.text
+
+
+def test_dashboard_hides_the_card_without_a_key(monkeypatch):
+    c411.reset_cache()
+    assert "Ratio C411" not in TestClient(main.app).get("/").text
+
+
 def test_history_shows_the_ratio(api):
     api(FakeResponse(profile()))
     page = TestClient(main.app).get("/history").text

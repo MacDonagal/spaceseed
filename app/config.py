@@ -46,6 +46,7 @@ class Settings:
     telegram_min_score: float = float(os.getenv("TELEGRAM_MIN_SCORE", "150"))
     telegram_freeleech_only: bool = env_bool("TELEGRAM_FREELEECH_ONLY", False)
     telegram_max_per_scan: int = int(os.getenv("TELEGRAM_MAX_PER_SCAN", "5"))
+    telegram_min_interval_minutes: int = int(os.getenv("TELEGRAM_MIN_INTERVAL_MINUTES", "60"))
 
     # Interface : l'authentification est active dès qu'un mot de passe est défini.
     spaceseed_username: str = os.getenv("SPACESEED_USERNAME", "admin")

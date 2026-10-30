@@ -25,7 +25,7 @@ def bot(monkeypatch):
     configured = replace(
         telegram.settings, telegram_bot_token="123:secret", telegram_chat_id="42",
         telegram_min_score=100, telegram_freeleech_only=False, telegram_max_per_scan=5,
-        scan_history_days=30,
+        telegram_min_interval_minutes=0, scan_history_days=30,
     )
     monkeypatch.setattr(telegram, "settings", configured)
     monkeypatch.setattr(main, "settings", configured)
@@ -218,8 +218,114 @@ def test_no_button_without_download_url_or_when_already_sent(bot):
         db.add(Grab(guid="sent", title="Titre", source="auto", status="sent"))
         db.commit()
     telegram.notify_opportunities(SEEN_AT)
+    assert len(calls) == 1
+    assert "reply_markup" not in calls[0][1]
+
+
+def test_several_opportunities_share_one_message_with_one_button_each(bot):
+    calls = bot()
+    add("a", score=300, url="http://x/a")
+    add("b", score=200, url="http://x/b")
+    assert telegram.notify_opportunities(SEEN_AT) == 2
+
+    assert len(calls) == 1
+    text = calls[0][1]["text"]
+    assert text.index("Titre a") < text.index("Titre b")
+    rows = calls[0][1]["reply_markup"]["inline_keyboard"]
+    assert [row[0]["text"] for row in rows] == ["⬇️ 1. Titre a", "⬇️ 2. Titre b"]
+
+
+def test_second_alert_waits_for_the_interval(bot, monkeypatch):
+    calls = bot()
+    monkeypatch.setattr(telegram, "settings", replace(telegram.settings, telegram_min_interval_minutes=60))
+    add("a")
+    assert telegram.notify_opportunities(SEEN_AT) == 1
+
+    soon = SEEN_AT + timedelta(minutes=30)
+    add("b", last_seen=soon)
+    assert telegram.notify_opportunities(soon) == 0
+    assert len(calls) == 1
+
+    later = SEEN_AT + timedelta(minutes=61)
+    with SessionLocal() as db:
+        db.scalar(select(Opportunity).where(Opportunity.guid == "b")).last_seen_at = later
+        db.commit()
+    assert telegram.notify_opportunities(later) == 1
     assert len(calls) == 2
-    assert all("reply_markup" not in payload for _, payload in calls)
+
+
+def test_failed_alert_does_not_start_the_interval(bot, monkeypatch):
+    bot(FakeResponse(500))
+    monkeypatch.setattr(telegram, "settings", replace(telegram.settings, telegram_min_interval_minutes=60))
+    add("a")
+    assert telegram.notify_opportunities(SEEN_AT) == 0
+    assert notification_count() == 0
+
+    bot()
+    assert telegram.notify_opportunities(SEEN_AT) == 1
+
+
+def account(**overrides):
+    return {
+        "ratio": "12.50", "margin_gb": "64.0", "uploaded_gb": "54.7", "downloaded_gb": "4.4",
+        "allowed": True, "blocked_reason": None, "below_reserve": False, **overrides,
+    }
+
+
+def test_alert_starts_with_the_ratio_recap(bot, monkeypatch):
+    calls = bot()
+    monkeypatch.setattr(telegram.c411, "summary", account)
+    add("a")
+    telegram.notify_opportunities(SEEN_AT)
+    text = calls[0][1]["text"]
+    assert "Ratio 12.50 · Marge 64.0 Go" in text
+    assert "⬆️ 54.7 Go · ⬇️ 4.4 Go" in text
+    assert text.index("Ratio") < text.index("Titre a")
+
+
+@pytest.mark.parametrize(
+    ("state", "expected"),
+    [
+        (account(below_reserve=True), "⚠️ 📊 Ratio"),
+        (account(allowed=False, blocked_reason="insufficient_balance"), "insufficient_balance"),
+        ({"error": "clé <invalide>"}, "clé &lt;invalide&gt;"),
+    ],
+)
+def test_recap_flags_account_problems(bot, monkeypatch, state, expected):
+    calls = bot()
+    monkeypatch.setattr(telegram.c411, "summary", lambda: state)
+    add("a")
+    telegram.notify_opportunities(SEEN_AT)
+    assert expected in calls[0][1]["text"]
+
+
+@pytest.mark.parametrize("text", ["/ratio", "/ratio@spaceseed_bot", "/RATIO"])
+def test_ratio_command_answers(bot, monkeypatch, text):
+    calls = bot()
+    monkeypatch.setattr(telegram.c411, "summary", account)
+    telegram.handle_message({"text": text, "chat": {"id": 42}})
+    assert "Ratio 12.50" in calls[0][1]["text"]
+
+
+def test_ratio_command_without_c411(bot):
+    calls = bot()
+    telegram.handle_message({"text": "/ratio", "chat": {"id": 42}})
+    assert "pas configuré" in calls[0][1]["text"]
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        {"text": "/ratio", "chat": {"id": 666}},
+        {"text": "bonjour", "chat": {"id": 42}},
+        {"chat": {"id": 42}},
+        {},
+    ],
+)
+def test_other_messages_are_ignored(bot, message):
+    calls = bot()
+    telegram.handle_message(message)
+    assert calls == []
 
 
 def test_click_starts_the_download_and_removes_the_button(bot, service):
@@ -229,6 +335,21 @@ def test_click_starts_the_download_and_removes_the_button(bot, service):
     assert methods(calls) == ["answerCallbackQuery", "editMessageReplyMarkup"]
     with SessionLocal() as db:
         assert db.scalar(select(Grab)).source == "telegram"
+
+
+def test_click_keeps_the_other_buttons(bot, service):
+    calls = bot()
+    notification_id = add_notified()
+    keyboard = {"inline_keyboard": [
+        [{"text": "1", "callback_data": f"grab:{notification_id}"}],
+        [{"text": "2", "callback_data": "grab:999"}],
+    ]}
+    callback = click(notification_id)
+    callback["message"]["reply_markup"] = keyboard
+    telegram.handle_callback(callback)
+
+    edit = next(payload for url, payload in calls if url.endswith("editMessageReplyMarkup"))
+    assert edit["reply_markup"] == {"inline_keyboard": [[{"text": "2", "callback_data": "grab:999"}]]}
 
 
 def test_second_click_does_not_send_twice(bot, service):
@@ -296,6 +417,12 @@ class UpdatesResponse(FakeResponse):
 def test_polling_advances_the_offset_and_survives_a_bad_update(bot, service):
     bot(UpdatesResponse([{"update_id": 5, "callback_query": {}}, {"update_id": 6, "other": 1}]))
     assert telegram.poll_updates(None) == 7
+
+
+def test_polling_listens_to_messages_and_clicks(bot):
+    calls = bot(UpdatesResponse([]))
+    telegram.poll_updates(None)
+    assert calls[0][1]["allowed_updates"] == ["callback_query", "message"]
 
 
 def test_polling_keeps_the_offset_when_idle(bot):

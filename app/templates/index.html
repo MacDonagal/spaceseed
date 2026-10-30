@@ -18,6 +18,17 @@
       {% if last_scan %}{{ last_scan.status }} · {{ last_scan.started_at.strftime('%d/%m %H:%M') }} UTC{% else %}Jamais{% endif %}
     </strong>
   </article>
+  {% if c411 %}
+  <article>
+    <span>Ratio C411</span>
+    {% if c411.error %}
+    <strong class="small error">Vérification impossible</strong>
+    {% else %}
+    <strong>{{ c411.ratio }}</strong>
+    <small class="{{ 'error' if c411.below_reserve or not c411.allowed else 'muted' }}">Marge {{ c411.margin_gb }} Go · ⬆️ {{ c411.uploaded_gb }} Go · ⬇️ {{ c411.downloaded_gb }} Go</small>
+    {% endif %}
+  </article>
+  {% endif %}
 </section>
 
 <section class="panel">

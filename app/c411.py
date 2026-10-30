@@ -135,6 +135,8 @@ def summary() -> dict | None:
     margin_gb = status.margin_bytes / GIB
     return {
         "ratio": "∞" if status.ratio == float("inf") else f"{status.ratio:.2f}",
+        "uploaded_gb": f"{status.uploaded / GIB:.1f}",
+        "downloaded_gb": f"{status.downloaded / GIB:.1f}",
         "margin_gb": f"{margin_gb:.1f}",
         "min_margin_gb": f"{settings.c411_min_margin_gb:g}",
         "allowed": status.allowed,

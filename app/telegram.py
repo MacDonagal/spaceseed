@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from html import escape
 import logging
 import re
@@ -7,6 +7,7 @@ import threading
 import requests
 from sqlalchemy import delete, desc, select
 
+from . import c411
 from .autograb import DownloadBlocked, send_opportunity
 from .config import settings
 from .database import SessionLocal
@@ -18,6 +19,8 @@ GIB = 1024 ** 3
 POLL_SECONDS = 25
 RETRY_SECONDS = 30
 ANSWER_MAX_LENGTH = 200
+TITLE_MAX_LENGTH = 150
+BUTTON_TITLE_LENGTH = 40
 CALLBACK_DATA = re.compile(r"grab:(\d+)")
 
 
@@ -57,7 +60,27 @@ def send_message(text: str, reply_markup: dict | None = None) -> None:
     _call("sendMessage", payload)
 
 
-def _message(opportunity: Opportunity, grabbed: bool) -> str:
+def _ratio_recap() -> str | None:
+    account = c411.summary()
+    if account is None:
+        return None
+    if "error" in account:
+        return f"⚠️ C411 : vérification impossible ({escape(account['error'])})"
+    if not account["allowed"]:
+        return f"⛔ C411 : téléchargement bloqué ({escape(account['blocked_reason'] or 'raison inconnue')})"
+
+    warning = "⚠️ " if account["below_reserve"] else ""
+    return (
+        f"{warning}📊 Ratio {account['ratio']} · Marge {account['margin_gb']} Go\n"
+        f"⬆️ {account['uploaded_gb']} Go · ⬇️ {account['downloaded_gb']} Go"
+    )
+
+
+def _shorten(title: str, length: int) -> str:
+    return title if len(title) <= length else f"{title[:length - 1]}…"
+
+
+def _digest_item(position: int, opportunity: Opportunity, grabbed: bool) -> str:
     details = [
         f"Score {opportunity.score:g}",
         f"S/L {opportunity.seeders}/{opportunity.leechers}",
@@ -66,16 +89,38 @@ def _message(opportunity: Opportunity, grabbed: bool) -> str:
     if opportunity.freeleech:
         details.append("FreeLeech")
 
-    lines = ["🚀 <b>Nouvelle opportunité</b>", escape(opportunity.title), " · ".join(details)]
+    lines = [f"<b>{position}.</b> {escape(_shorten(opportunity.title, TITLE_MAX_LENGTH))}", " · ".join(details)]
     if grabbed:
         lines.append("✅ Envoyé automatiquement à qBittorrent")
     return "\n".join(lines)
 
 
-def _download_button(notification_id: int) -> dict:
+def _digest(opportunities: list[Opportunity], grabbed: set[str]) -> str:
+    parts = ["🚀 <b>Nouvelles opportunités</b>"]
+    recap = _ratio_recap()
+    if recap:
+        parts.append(recap)
+    parts += [
+        _digest_item(position, opportunity, opportunity.guid in grabbed)
+        for position, opportunity in enumerate(opportunities, start=1)
+    ]
+    return "\n\n".join(parts)
+
+
+def _download_buttons(
+    opportunities: list[Opportunity], notifications: list[Notification], grabbed: set[str]
+) -> dict | None:
     # L'id de notification plutôt que celui de l'opportunité : SQLite peut
     # réattribuer ce dernier, et un ancien bouton lancerait un autre torrent.
-    return {"inline_keyboard": [[{"text": "⬇️ Télécharger", "callback_data": f"grab:{notification_id}"}]]}
+    rows = [
+        [{
+            "text": f"⬇️ {position}. {_shorten(opportunity.title, BUTTON_TITLE_LENGTH)}",
+            "callback_data": f"grab:{notification.id}",
+        }]
+        for position, (opportunity, notification) in enumerate(zip(opportunities, notifications), start=1)
+        if opportunity.download_url and opportunity.guid not in grabbed
+    ]
+    return {"inline_keyboard": rows} if rows else None
 
 
 def _pending(seen_at: datetime) -> tuple[list[Opportunity], set[str]]:
@@ -99,43 +144,61 @@ def _pending(seen_at: datetime) -> tuple[list[Opportunity], set[str]]:
     return opportunities, grabbed
 
 
+def _sent_recently(seen_at: datetime) -> bool:
+    if settings.telegram_min_interval_minutes <= 0:
+        return False
+    # Lu en base pour que la limite tienne après un redémarrage.
+    window_start = seen_at - timedelta(minutes=settings.telegram_min_interval_minutes)
+    with SessionLocal() as db:
+        return db.scalar(select(Notification.id).where(Notification.sent_at > window_start).limit(1)) is not None
+
+
+def _purge(seen_at: datetime) -> None:
+    history_before = seen_at - timedelta(days=settings.scan_history_days)
+    with SessionLocal() as db:
+        db.execute(delete(Notification).where(Notification.sent_at < history_before))
+        db.commit()
+
+
 def notify_opportunities(seen_at: datetime) -> int:
-    """Signale les nouvelles opportunités du scan ; n'interrompt jamais le scan."""
+    """Envoie une alerte groupée, au plus une par intervalle ; n'interrompt jamais le scan."""
     if not configured():
         return 0
 
-    sent = 0
     try:
+        _purge(seen_at)
+        if _sent_recently(seen_at):
+            return 0
+
         opportunities, grabbed = _pending(seen_at)
+        if not opportunities:
+            return 0
+
         with SessionLocal() as db:
-            for opportunity in opportunities:
-                already_grabbed = opportunity.guid in grabbed
-                # Commit avant l'envoi : le bouton a besoin de l'id, et la base
-                # ne doit pas rester verrouillée pendant l'appel réseau.
-                notification = Notification(guid=opportunity.guid)
-                db.add(notification)
-                db.commit()
-
-                offer_button = opportunity.download_url and not already_grabbed
-                button = _download_button(notification.id) if offer_button else None
-                try:
-                    send_message(_message(opportunity, already_grabbed), button)
-                except TelegramError:
-                    db.delete(notification)
-                    db.commit()
-                    raise
-                sent += 1
-
-            history_before = seen_at - timedelta(days=settings.scan_history_days)
-            db.execute(delete(Notification).where(Notification.sent_at < history_before))
+            # Commit avant l'envoi : les boutons ont besoin des id, et la base
+            # ne doit pas rester verrouillée pendant l'appel réseau.
+            notifications = [Notification(guid=item.guid, sent_at=seen_at) for item in opportunities]
+            db.add_all(notifications)
             db.commit()
+
+            try:
+                send_message(
+                    _digest(opportunities, grabbed),
+                    _download_buttons(opportunities, notifications, grabbed),
+                )
+            except TelegramError:
+                for notification in notifications:
+                    db.delete(notification)
+                db.commit()
+                raise
+        return len(opportunities)
     except TelegramError as exc:
         # Les torrents non signalés restent éligibles au prochain scan.
         logger.warning("Notification Telegram interrompue : %s", exc)
     except Exception:
         logger.exception("Notification Telegram en erreur")
 
-    return sent
+    return 0
 
 
 def _answer(callback: dict, text: str, alert: bool = False) -> None:
@@ -145,21 +208,36 @@ def _answer(callback: dict, text: str, alert: bool = False) -> None:
     )
 
 
-def _remove_button(message: dict) -> None:
+def _remove_button(message: dict, data: str) -> None:
+    # Une alerte groupée garde les boutons des autres torrents.
+    keyboard = (message.get("reply_markup") or {}).get("inline_keyboard", [])
+    remaining = [
+        [button for button in row if button.get("callback_data") != data]
+        for row in keyboard
+    ]
     _call(
         "editMessageReplyMarkup",
-        {"chat_id": message["chat"]["id"], "message_id": message["message_id"]},
+        {
+            "chat_id": message["chat"]["id"],
+            "message_id": message["message_id"],
+            "reply_markup": {"inline_keyboard": [row for row in remaining if row]},
+        },
     )
+
+
+def _authorized(message: dict) -> bool:
+    return str((message.get("chat") or {}).get("id")) == settings.telegram_chat_id
 
 
 def handle_callback(callback: dict) -> None:
     message = callback.get("message") or {}
-    if str((message.get("chat") or {}).get("id")) != settings.telegram_chat_id:
+    if not _authorized(message):
         logger.warning("Clic Telegram refusé : conversation non autorisée")
         _answer(callback, "Non autorisé", alert=True)
         return
 
-    match = CALLBACK_DATA.fullmatch(callback.get("data") or "")
+    data = callback.get("data") or ""
+    match = CALLBACK_DATA.fullmatch(data)
     if match is None:
         _answer(callback, "Action inconnue")
         return
@@ -174,11 +252,11 @@ def handle_callback(callback: dict) -> None:
 
     if already_sent:
         _answer(callback, "Déjà envoyé à qBittorrent")
-        _remove_button(message)
+        _remove_button(message, data)
         return
     if opportunity is None or not opportunity.download_url:
         _answer(callback, "Ce torrent n'est plus disponible", alert=True)
-        _remove_button(message)
+        _remove_button(message, data)
         return
 
     try:
@@ -188,25 +266,34 @@ def handle_callback(callback: dict) -> None:
         return
 
     _answer(callback, "Envoyé à qBittorrent ✅")
-    _remove_button(message)
+    _remove_button(message, data)
+
+
+def handle_message(message: dict) -> None:
+    if not _authorized(message):
+        return
+    command = (message.get("text") or "").split("@")[0].strip().lower()
+    if command == "/ratio":
+        send_message(_ratio_recap() or "Le contrôle C411 n'est pas configuré.")
 
 
 def poll_updates(offset: int | None) -> int | None:
     response = _call(
         "getUpdates",
-        {"offset": offset, "timeout": POLL_SECONDS, "allowed_updates": ["callback_query"]},
+        {"offset": offset, "timeout": POLL_SECONDS, "allowed_updates": ["callback_query", "message"]},
         timeout=POLL_SECONDS + 10,
     )
     for update in response.json().get("result", []):
         # Avancé avant le traitement : un clic qui échoue ne doit pas être rejoué
         # en boucle, ni relancer un téléchargement.
         offset = update["update_id"] + 1
-        if "callback_query" not in update:
-            continue
         try:
-            handle_callback(update["callback_query"])
+            if "callback_query" in update:
+                handle_callback(update["callback_query"])
+            elif "message" in update:
+                handle_message(update["message"])
         except Exception:
-            logger.exception("Clic Telegram en erreur")
+            logger.exception("Commande Telegram en erreur")
     return offset
 
 

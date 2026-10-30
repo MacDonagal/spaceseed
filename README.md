@@ -24,7 +24,7 @@ SpaceSeed surveille un indexeur Torznab, note chaque torrent et vous alerte sur 
 - 🖥️ **Interface web** : grille triable et filtrable, état du swarm et historique.
 - 🛡️ **Protection C411** : vérification de la marge et du blocage du compte avant chaque envoi.
 - 🤖 **Envoi automatique** : désactivé par défaut, avec plafonds de volume et d'espace disque.
-- 📱 **Alertes Telegram** : notification avec bouton **Télécharger**, sans port à ouvrir.
+- 📱 **Alertes Telegram** : une alerte groupée par heure au maximum, avec votre ratio et un bouton **Télécharger** par torrent.
 
 ```text
 Prowlarr ──flux Torznab──> SpaceSeed ──envois──> qBittorrent
@@ -177,10 +177,14 @@ Vérifiez les règles de votre tracker avant d'activer cette fonction. SpaceSeed
 |---|---|---|
 | `TELEGRAM_MIN_SCORE` | `150` | Score minimal pour une alerte |
 | `TELEGRAM_FREELEECH_ONLY` | `false` | Alertes FreeLeech uniquement |
-| `TELEGRAM_MAX_PER_SCAN` | `5` | Alertes maximales par scan, meilleurs scores d'abord |
+| `TELEGRAM_MAX_PER_SCAN` | `5` | Torrents maximum dans une alerte, meilleurs scores d'abord |
+| `TELEGRAM_MIN_INTERVAL_MINUTES` | `60` | Délai minimum entre deux alertes, conservé après un redémarrage |
 
+- Une alerte groupée commence par le ratio, la marge et les volumes C411, puis liste les torrents.
+- Sans nouvelle opportunité, aucune alerte ne part. La commande `/ratio` affiche le récap à tout moment.
 - Chaque torrent n'est signalé qu'une fois.
-- Le bouton **Télécharger** applique la protection C411 et ne répond qu'à `TELEGRAM_CHAT_ID`.
+- Les torrents en attente pendant le délai passent dans l'alerte suivante s'ils sont toujours dans le flux.
+- Chaque bouton **Télécharger** applique la protection C411 et ne répond qu'à `TELEGRAM_CHAT_ID`.
 - Le bouton reste utilisable tant que le torrent figure dans les opportunités.
 - Un même bot ne peut alimenter qu'une seule instance de SpaceSeed.
 - Une panne de Telegram n'interrompt pas le scan.
@@ -208,7 +212,7 @@ Vérifiez les règles de votre tracker avant d'activer cette fonction. SpaceSeed
 | Tous les envois sont bloqués | API C411 injoignable, ou compte bloqué : voir la page Historique |
 | « Envoyé » mais rien dans qBittorrent | qBittorrent ne joint pas l'adresse de `TORZNAB_URL` |
 | Page Opportunités vide | Filtres trop stricts, ou erreur de scan : voir la page Historique |
-| Aucune alerte Telegram | `TELEGRAM_MIN_SCORE` trop haut, ou bot mal configuré |
+| Aucune alerte Telegram | Délai `TELEGRAM_MIN_INTERVAL_MINUTES` en cours, `TELEGRAM_MIN_SCORE` trop haut, ou bot mal configuré |
 | Swarm affiche « Non ajouté » | Le nom du torrent diffère dans qBittorrent |
 
 ## Développement
