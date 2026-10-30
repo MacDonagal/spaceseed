@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="title-row opportunities-header">
+  <div>
+    <span class="eyebrow">OPPORTUNITÉS</span>
+    <h1>Le radar vivant</h1>
+    <p class="grid-subtitle">
+      Tri, filtres, colonnes redimensionnables et recherche instantanée.
+    </p>
+
+    {% if request.query_params.get("sent") %}
+      <p class="success-message">Torrent envoyé à qBittorrent ✅</p>
+    {% endif %}
+  </div>
+
+  <div class="grid-actions">
+    <label class="search-box">
+      <span>🔎</span>
+      <input
+        id="grid-search"
+        type="search"
+        placeholder="Rechercher un torrent…"
+        autocomplete="off"
+      >
+    </label>
+
+    <button id="reset-grid" class="secondary-button" type="button">
+      Réinitialiser
+    </button>
+
+    <form method="post" action="/scan">
+      <button type="submit">Actualiser</button>
+    </form>
+  </div>
+</section>
+
+<section class="grid-stats" aria-label="Résumé">
+  <span><strong id="visible-count">{{ rows | length }}</strong> affichés</span>
+  <span><strong>{{ rows | selectattr("freeleech") | list | length }}</strong> FreeLeech</span>
+</section>
+
+<div id="opportunities-grid"></div>
+
+<script
+  src="https://cdn.jsdelivr.net/npm/ag-grid-community@36.0.2/dist/ag-grid-community.min.js"
+  integrity="sha384-4P7t+1WzUk9bbgIHEl6gh2Pg3BIKScCBPmHKP61ggNasjwYnpFzttAAv1uKoYiHh"
+  crossorigin="anonymous"
+></script>
+
+<script id="opportunities-data" type="application/json">{{ rows | tojson }}</script>
+<script src="/static/opportunities.js"></script>
+{% endblock %}

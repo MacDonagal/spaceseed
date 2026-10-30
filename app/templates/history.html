@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="title-row"><div><span class="eyebrow">JOURNAL</span><h1>Historique des scans</h1></div></section>
+<section class="panel grabs-panel">
+<h2>Envois vers qBittorrent</h2>
+<p class="muted">Envoi automatique {{ "activé" if auto_grab_enabled else "désactivé" }}.</p>
+{% if c411 %}
+  {% if c411.error %}
+<p class="error">C411 : vérification impossible ({{ c411.error }}). Tous les envois sont bloqués.</p>
+  {% elif not c411.allowed %}
+<p class="error">C411 : téléchargement bloqué ({{ c411.blocked_reason or "raison inconnue" }}). Tous les envois sont bloqués.</p>
+  {% elif c411.below_reserve %}
+<p class="error">C411 : ratio {{ c411.ratio }}, marge de {{ c411.margin_gb }} Go sous la réserve de {{ c411.min_margin_gb }} Go. Les envois non FreeLeech sont bloqués.</p>
+  {% else %}
+<p class="muted">C411 : ratio {{ c411.ratio }}, marge de {{ c411.margin_gb }} Go (réserve {{ c411.min_margin_gb }} Go).</p>
+  {% endif %}
+{% endif %}
+<table>
+<thead><tr><th>Date</th><th>Origine</th><th>État</th><th>Torrent</th><th>Score</th><th>Taille</th><th>Erreur</th></tr></thead>
+<tbody>
+{% for grab in grabs %}
+<tr>
+<td>{{ grab.grabbed_at.strftime('%d/%m/%Y %H:%M:%S') }} UTC</td>
+<td>{{ "Automatique" if grab.source == "auto" else "Manuel" }}</td>
+<td><span class="status {{ grab.status }}">{{ "Envoyé" if grab.status == "sent" else "Échec" }}</span></td>
+<td>{{ grab.title }}</td>
+<td><span class="score">{{ grab.score }}</span></td>
+<td>{{ "%.2f"|format(grab.size_bytes / 1073741824) }} Go</td>
+<td class="error">{{ grab.error or "" }}</td>
+</tr>
+{% else %}
+<tr><td colspan="7">Aucun envoi enregistré.</td></tr>
+{% endfor %}
+</tbody>
+</table>
+</section>
+<section class="panel">
+<table>
+<thead><tr><th>Début</th><th>État</th><th>Reçus</th><th>Créés</th><th>Mis à jour</th><th>Rejetés</th><th>Périmés</th><th>Erreur</th></tr></thead>
+<tbody>
+{% for run in runs %}
+<tr>
+<td>{{ run.started_at.strftime('%d/%m/%Y %H:%M:%S') }} UTC</td>
+<td><span class="status {{ run.status }}">{{ run.status }}</span></td>
+<td>{{ run.received }}</td><td>{{ run.created }}</td><td>{{ run.updated }}</td><td>{{ run.rejected }}</td><td>{{ run.stale_removed }}</td>
+<td class="error">{{ run.error or "" }}</td>
+</tr>
+{% else %}
+<tr><td colspan="8">Aucun scan enregistré.</td></tr>
+{% endfor %}
+</tbody>
+</table>
+</section>
+{% endblock %}

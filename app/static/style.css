@@ -1,0 +1,511 @@
+:root {
+  color-scheme: dark;
+  --bg: #07111f;
+  --panel: #0d1b2e;
+  --line: #1d3550;
+  --text: #e8f1ff;
+  --muted: #91a7c2;
+  --accent: #72f1b8;
+  --accent2: #5ba8ff;
+  --danger: #e5484d;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: radial-gradient(circle at top right, #10294a 0, #07111f 38%);
+  color: var(--text);
+  font-family:
+    Inter,
+    Segoe UI,
+    Arial,
+    sans-serif;
+  min-height: 100vh;
+}
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 5vw;
+  border-bottom: 1px solid var(--line);
+  background: #07111fcc;
+  backdrop-filter: blur(12px);
+  position: sticky;
+  top: 0;
+}
+a {
+  color: inherit;
+  text-decoration: none;
+}
+.brand {
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+nav {
+  display: flex;
+  gap: 24px;
+}
+nav a {
+  color: var(--muted);
+}
+nav a:hover {
+  color: var(--accent);
+}
+main {
+  width: min(1400px, 92vw);
+  margin: 42px auto;
+}
+.hero,
+.title-row {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 30px;
+  margin-bottom: 28px;
+}
+.hero h1,
+.title-row h1 {
+  font-size: clamp(2rem, 5vw, 4.7rem);
+  margin: 0.2em 0;
+}
+.hero p {
+  color: var(--muted);
+  max-width: 700px;
+  font-size: 1.1rem;
+}
+.eyebrow {
+  color: var(--accent);
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  font-size: 0.75rem;
+}
+button {
+  border: 0;
+  border-radius: 12px;
+  padding: 13px 18px;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  color: #04111f;
+  font-weight: 900;
+  cursor: pointer;
+  box-shadow: 0 8px 30px #5ba8ff2b;
+}
+.cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+  margin-bottom: 24px;
+}
+.cards article,
+.panel {
+  background: linear-gradient(145deg, #102139dd, #0b1728dd);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  box-shadow: 0 22px 70px #0004;
+}
+.cards article {
+  padding: 24px;
+}
+.cards span {
+  color: var(--muted);
+  display: block;
+}
+.cards strong {
+  display: block;
+  font-size: 2.4rem;
+  margin-top: 12px;
+}
+.cards strong.small {
+  font-size: 1rem;
+  color: var(--accent);
+}
+.panel {
+  padding: 22px;
+  overflow: auto;
+}
+.panel h2 {
+  margin-top: 0;
+}
+table {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 780px;
+}
+th,
+td {
+  text-align: left;
+  padding: 14px 12px;
+  border-bottom: 1px solid var(--line);
+}
+th {
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+}
+tbody tr:hover {
+  background: #ffffff05;
+}
+.score {
+  display: inline-block;
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: #72f1b81a;
+  color: var(--accent);
+  font-weight: 900;
+}
+.status {
+  padding: 4px 8px;
+  border-radius: 999px;
+}
+.status.success {
+  color: var(--accent);
+  background: #72f1b81a;
+}
+.status.error {
+  color: #ff8b8b;
+  background: #ff5f5f18;
+}
+.error {
+  color: #ff9c9c;
+  max-width: 380px;
+  white-space: normal;
+}
+@media (max-width: 800px) {
+  header {
+    align-items: flex-start;
+    gap: 16px;
+    flex-direction: column;
+  }
+  nav {
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .hero,
+  .title-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .cards {
+    grid-template-columns: 1fr;
+  }
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.success-message {
+  margin-top: 10px;
+  color: var(--accent);
+  font-weight: 800;
+}
+
+.grabs-panel {
+  margin-bottom: 24px;
+}
+.status.sent {
+  color: var(--accent);
+  background: #72f1b81a;
+}
+.status.failed {
+  color: #ff8b8b;
+  background: #ff5f5f18;
+}
+
+/* =========================================================
+   AG Grid - Opportunités
+   ========================================================= */
+
+.opportunities-header {
+  align-items: center;
+}
+
+.grid-subtitle {
+  margin: 8px 0 0;
+  color: var(--muted);
+}
+
+.grid-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.grid-actions form {
+  margin: 0;
+}
+
+.search-box {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: min(360px, 80vw);
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(13, 27, 46, 0.9);
+}
+
+.search-box:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(114, 241, 184, 0.1);
+}
+
+.search-box input {
+  width: 100%;
+  height: 45px;
+  border: 0;
+  outline: 0;
+  color: var(--text);
+  background: transparent;
+  font: inherit;
+}
+
+.search-box input::placeholder {
+  color: var(--muted);
+}
+
+.secondary-button {
+  color: var(--text);
+  background: rgba(145, 167, 194, 0.1);
+  border: 1px solid var(--line);
+  box-shadow: none;
+}
+
+.secondary-button:hover {
+  color: var(--accent);
+  background: rgba(114, 241, 184, 0.08);
+}
+
+.grid-stats {
+  display: flex;
+  gap: 10px;
+  margin: -12px 0 14px;
+}
+
+.grid-stats span {
+  padding: 7px 11px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  background: rgba(13, 27, 46, 0.72);
+  font-size: 0.82rem;
+}
+
+.grid-stats strong {
+  color: var(--text);
+}
+
+#opportunities-grid {
+  width: 100%;
+  height: calc(100vh - 270px);
+  min-height: 620px;
+}
+
+/* Le contenu principal prend réellement toute la largeur. */
+main:has(#opportunities-grid) {
+  width: 100%;
+  max-width: none;
+  padding-left: 1vw;
+  padding-right: 1vw;
+}
+
+.ag-score {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 68px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  font-weight: 900;
+}
+
+.ag-score-excellent {
+  color: #72f1b8;
+  background: rgba(114, 241, 184, 0.13);
+  border: 1px solid rgba(114, 241, 184, 0.35);
+}
+
+.ag-score-good {
+  color: #76baff;
+  background: rgba(91, 168, 255, 0.13);
+  border: 1px solid rgba(91, 168, 255, 0.35);
+}
+
+.ag-score-medium {
+  color: #ffd166;
+  background: rgba(255, 209, 102, 0.12);
+  border: 1px solid rgba(255, 209, 102, 0.3);
+}
+
+.ag-score-low {
+  color: #91a7c2;
+  background: rgba(145, 167, 194, 0.09);
+  border: 1px solid rgba(145, 167, 194, 0.2);
+}
+
+.ag-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 9px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.ag-badge-freeleech {
+  color: var(--accent);
+  background: rgba(114, 241, 184, 0.1);
+  border: 1px solid rgba(114, 241, 184, 0.25);
+}
+
+.ag-muted {
+  color: var(--muted);
+}
+
+.ag-download-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 175px;
+  min-height: 34px;
+  padding: 7px 11px;
+  border: 1px solid rgba(114, 241, 184, 0.32);
+  border-radius: 9px;
+  color: var(--accent);
+  background: rgba(114, 241, 184, 0.09);
+  box-shadow: none;
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.ag-download-button:hover {
+  color: #04111f;
+  background: var(--accent);
+}
+
+.ag-download-button:disabled {
+  cursor: wait;
+  opacity: 0.8;
+  transform: none;
+}
+
+.ag-download-button.sent {
+  color: #04111f;
+  background: var(--accent);
+}
+
+.ag-download-button.failed {
+  color: #fff;
+  background: var(--danger);
+  border-color: var(--danger);
+}
+
+/* Ajustements visuels internes AG Grid. */
+#opportunities-grid .ag-root-wrapper {
+  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.27);
+}
+
+/* Le style global des boutons ne doit pas s'appliquer aux contrôles de la grille. */
+#opportunities-grid .ag-floating-filter-button-button {
+  padding: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+
+#opportunities-grid .ag-score {
+  line-height: 1.2;
+}
+
+#opportunities-grid .ag-header-cell-label {
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+#opportunities-grid .ag-cell {
+  display: flex;
+  align-items: center;
+}
+
+#opportunities-grid .ag-pinned-left-cols-container,
+#opportunities-grid .ag-pinned-right-cols-container {
+  box-shadow: 0 0 24px rgba(0, 0, 0, 0.18);
+}
+
+@media (max-width: 900px) {
+  .opportunities-header {
+    align-items: flex-start;
+  }
+
+  .grid-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .search-box {
+    flex: 1 1 100%;
+    min-width: 100%;
+  }
+
+  #opportunities-grid {
+    height: calc(100vh - 360px);
+    min-height: 560px;
+  }
+
+  main:has(#opportunities-grid) {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+}
+
+.swarm-status {
+  display: inline-flex;
+  justify-content: center;
+  min-width: 104px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 850;
+  border: 1px solid transparent;
+}
+.swarm-active,
+.swarm-seeding_active {
+  color: #72f1b8;
+  background: #72f1b81f;
+  border-color: #72f1b84d;
+}
+.swarm-waiting {
+  color: #76baff;
+  background: #5ba8ff1f;
+  border-color: #5ba8ff4d;
+}
+.swarm-slow {
+  color: #ffd166;
+  background: #ffd1661f;
+  border-color: #ffd1664d;
+}
+.swarm-blocked {
+  color: #ff8b8b;
+  background: #ff5f5f1c;
+  border-color: #ff5f5f4d;
+}
+.swarm-paused,
+.swarm-seeding_idle,
+.swarm-not-added {
+  color: #91a7c2;
+  background: #91a7c217;
+  border-color: #91a7c22e;
+}
+.qbit-cell {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+.qbit-cell span {
+  color: var(--muted);
+  font-size: 0.74rem;
+}

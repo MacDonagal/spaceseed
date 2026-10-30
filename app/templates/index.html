@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero">
+  <div>
+    <span class="eyebrow">RADAR TORZNAB</span>
+    <h1>Les bons torrents avant la cohue.</h1>
+    <p>SpaceSeed actualise les seeders, les leechers et le score à chaque scan.</p>
+  </div>
+  <form method="post" action="/scan"><button>Scanner maintenant</button></form>
+</section>
+
+<section class="cards">
+  <article><span>Opportunités actives</span><strong>{{ total }}</strong></article>
+  <article><span>FreeLeech</span><strong>{{ freeleech }}</strong></article>
+  <article>
+    <span>Dernier scan</span>
+    <strong class="small">
+      {% if last_scan %}{{ last_scan.status }} · {{ last_scan.started_at.strftime('%d/%m %H:%M') }} UTC{% else %}Jamais{% endif %}
+    </strong>
+  </article>
+</section>
+
+<section class="panel">
+  <h2>Meilleurs signaux</h2>
+  <table>
+    <thead><tr><th>Torrent</th><th>Score</th><th>S/L</th><th>FreeLeech</th></tr></thead>
+    <tbody>
+    {% for row in top %}
+      <tr>
+        <td>{{ row.title }}</td>
+        <td><span class="score">{{ row.score }}</span></td>
+        <td>{{ row.seeders }} / {{ row.leechers }}</td>
+        <td>{{ "✅" if row.freeleech else "—" }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="4">Aucune donnée. Lance le premier scan.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

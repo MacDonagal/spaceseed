@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ app_name }}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header>
+  <a class="brand" href="/">🚀 {{ app_name }}</a>
+  <nav>
+    <a href="/">Tableau de bord</a>
+    <a href="/opportunities">Opportunités</a>
+    <a href="/history">Historique</a>
+  </nav>
+</header>
+<main>{% block content %}{% endblock %}</main>
+</body>
+</html>

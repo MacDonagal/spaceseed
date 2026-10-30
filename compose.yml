@@ -1,0 +1,18 @@
+services:
+  spaceseed:
+    build: .
+    container_name: spaceseed
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "${SPACESEED_BIND:-127.0.0.1}:${SPACESEED_PORT:-8095}:8000"
+    volumes:
+      - ./data:/app/data
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
