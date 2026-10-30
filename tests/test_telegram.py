@@ -6,9 +6,10 @@ import pytest
 import requests
 from sqlalchemy import func, select
 
-from app import main, telegram
+from app import autograb, main, telegram
 from app.database import SessionLocal
 from app.models import Grab, Notification, Opportunity
+from app.qbittorrent import QBittorrentError
 
 GIB = 1024 ** 3
 SEEN_AT = datetime(2026, 1, 1, tzinfo=timezone.utc)
@@ -43,10 +44,10 @@ def bot(monkeypatch):
     return serve
 
 
-def add(guid, score=200.0, freeleech=False, last_seen=SEEN_AT, title=None):
+def add(guid, score=200.0, freeleech=False, last_seen=SEEN_AT, title=None, url=None):
     with SessionLocal() as db:
         db.add(Opportunity(
-            guid=guid, title=title or f"Titre {guid}", score=score, seeders=2, leechers=8,
+            guid=guid, title=title or f"Titre {guid}", download_url=url, score=score, seeders=2, leechers=8,
             size_bytes=3 * GIB, freeleech=freeleech, last_seen_at=last_seen,
         ))
         db.commit()
@@ -153,6 +154,160 @@ def test_old_notifications_are_purged(bot):
         db.commit()
     telegram.notify_opportunities(SEEN_AT)
     assert notification_count() == 0
+
+
+class FakeService:
+    def __init__(self, error=None):
+        self.error = error
+        self.urls = []
+
+    def add_from_url(self, url):
+        if self.error:
+            raise self.error
+        self.urls.append(url)
+
+
+@pytest.fixture
+def service(monkeypatch):
+    fake = FakeService()
+    monkeypatch.setattr(telegram, "get_qbittorrent", lambda: fake)
+    return fake
+
+
+def add_notified(guid="a"):
+    add(guid)
+    with SessionLocal() as db:
+        db.scalar(select(Opportunity).where(Opportunity.guid == guid)).download_url = f"http://x/{guid}"
+        notification = Notification(guid=guid)
+        db.add(notification)
+        db.commit()
+        return notification.id
+
+
+def click(notification_id, chat_id=42):
+    return {
+        "id": "cb1",
+        "data": f"grab:{notification_id}",
+        "message": {"message_id": 7, "chat": {"id": chat_id}},
+    }
+
+
+def methods(calls):
+    return [url.rsplit("/", 1)[1] for url, _ in calls]
+
+
+def answer_of(calls):
+    return next(payload for url, payload in calls if url.endswith("answerCallbackQuery"))
+
+
+def test_alert_carries_a_download_button(bot):
+    calls = bot()
+    add("a", url="http://x/a")
+    telegram.notify_opportunities(SEEN_AT)
+    with SessionLocal() as db:
+        notification_id = db.scalar(select(Notification.id))
+    button = calls[0][1]["reply_markup"]["inline_keyboard"][0][0]
+    assert button["callback_data"] == f"grab:{notification_id}"
+
+
+def test_no_button_without_download_url_or_when_already_sent(bot):
+    calls = bot()
+    add("nolink")
+    add("sent", url="http://x/sent", score=150)
+    with SessionLocal() as db:
+        db.add(Grab(guid="sent", title="Titre", source="auto", status="sent"))
+        db.commit()
+    telegram.notify_opportunities(SEEN_AT)
+    assert len(calls) == 2
+    assert all("reply_markup" not in payload for _, payload in calls)
+
+
+def test_click_starts_the_download_and_removes_the_button(bot, service):
+    calls = bot()
+    telegram.handle_callback(click(add_notified()))
+    assert service.urls == ["http://x/a"]
+    assert methods(calls) == ["answerCallbackQuery", "editMessageReplyMarkup"]
+    with SessionLocal() as db:
+        assert db.scalar(select(Grab)).source == "telegram"
+
+
+def test_second_click_does_not_send_twice(bot, service):
+    bot()
+    notification_id = add_notified()
+    telegram.handle_callback(click(notification_id))
+    telegram.handle_callback(click(notification_id))
+    assert len(service.urls) == 1
+
+
+def test_click_from_another_chat_is_refused(bot, service):
+    calls = bot()
+    telegram.handle_callback(click(add_notified(), chat_id=666))
+    assert service.urls == []
+    assert answer_of(calls)["text"] == "Non autorisé"
+
+
+@pytest.mark.parametrize("data", ["", "grab:", "grab:abc", "grab:1;drop", "autre:1"])
+def test_invalid_callback_data_is_ignored(bot, service, data):
+    calls = bot()
+    add_notified()
+    telegram.handle_callback({**click(1), "data": data})
+    assert service.urls == []
+    assert answer_of(calls)["text"] == "Action inconnue"
+
+
+def test_click_on_a_removed_opportunity(bot, service):
+    calls = bot()
+    notification_id = add_notified()
+    with SessionLocal() as db:
+        db.delete(db.scalar(select(Opportunity)))
+        db.commit()
+    telegram.handle_callback(click(notification_id))
+    assert service.urls == []
+    assert "plus disponible" in answer_of(calls)["text"]
+
+
+def test_click_stays_blocked_by_c411(bot, service, monkeypatch):
+    calls = bot()
+    monkeypatch.setattr(autograb, "download_block_reason", lambda *a: "Marge C411 insuffisante")
+    telegram.handle_callback(click(add_notified()))
+    assert service.urls == []
+    assert answer_of(calls)["text"] == "Marge C411 insuffisante"
+    assert answer_of(calls)["show_alert"] is True
+    assert "editMessageReplyMarkup" not in methods(calls)
+
+
+def test_qbittorrent_error_keeps_the_button(bot, monkeypatch):
+    calls = bot()
+    monkeypatch.setattr(telegram, "get_qbittorrent", lambda: FakeService(QBittorrentError("hors ligne")))
+    telegram.handle_callback(click(add_notified()))
+    assert answer_of(calls)["text"] == "hors ligne"
+    assert "editMessageReplyMarkup" not in methods(calls)
+
+
+class UpdatesResponse(FakeResponse):
+    def __init__(self, updates):
+        super().__init__()
+        self.updates = updates
+
+    def json(self):
+        return {"result": self.updates}
+
+
+def test_polling_advances_the_offset_and_survives_a_bad_update(bot, service):
+    bot(UpdatesResponse([{"update_id": 5, "callback_query": {}}, {"update_id": 6, "other": 1}]))
+    assert telegram.poll_updates(None) == 7
+
+
+def test_polling_keeps_the_offset_when_idle(bot):
+    bot(UpdatesResponse([]))
+    assert telegram.poll_updates(12) == 12
+
+
+def test_polling_error_does_not_expose_the_token(bot):
+    bot(requests.ConnectionError("https://api.telegram.org/bot123:secret/getUpdates"))
+    with pytest.raises(telegram.TelegramError) as error:
+        telegram.poll_updates(None)
+    assert "secret" not in str(error.value)
 
 
 def test_test_endpoint_sends_a_message(bot):

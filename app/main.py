@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 import logging
+import threading
 import time
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -11,14 +12,14 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import desc, func, select
 
 from . import c411
-from .autograb import save_grab
+from .autograb import DownloadBlocked, send_opportunity
 from .config import settings
 from .database import SessionLocal, init_db
 from .models import Grab, Opportunity, ScanRun
 from .qbittorrent import QBittorrentError, get_qbittorrent, swarm_health
 from .scanner import scan_once
 from .security import basic_auth_valid, is_cross_origin
-from .telegram import TelegramError, send_message
+from .telegram import TelegramError, configured as telegram_configured, run_bot, send_message
 
 logging.basicConfig(
     level=logging.INFO,
@@ -45,11 +46,15 @@ async def lifespan(app: FastAPI):
         next_run_time=datetime.now(timezone.utc),
     )
     scheduler.start()
+    stop_bot = threading.Event()
+    if telegram_configured():
+        threading.Thread(target=run_bot, args=(stop_bot,), name="telegram-bot", daemon=True).start()
     logger.info(
         "SpaceSeed démarré | scan toutes les %d minutes",
         settings.scan_interval_minutes,
     )
     yield
+    stop_bot.set()
     scheduler.shutdown(wait=False)
 
 
@@ -167,15 +172,10 @@ def download_opportunity(opportunity_id: int):
     if not opportunity.download_url:
         raise HTTPException(status_code=400, detail="URL de téléchargement indisponible")
 
-    reason = c411.download_block_reason(opportunity.size_bytes, opportunity.freeleech)
-    if reason:
-        raise HTTPException(status_code=409, detail=reason)
-
-    get_qbittorrent().add_from_url(opportunity.download_url)
-    # Enregistré pour que l'envoi automatique ne le renvoie pas.
-    save_grab(opportunity, source="manual", status="sent")
-    # Le titre plutôt que l'URL, qui contient la clé API ou le passkey.
-    logger.info("Torrent envoyé à qBittorrent | id=%d | titre=%s", opportunity_id, opportunity.title)
+    try:
+        send_opportunity(opportunity, get_qbittorrent(), source="manual")
+    except DownloadBlocked as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
     return RedirectResponse(url="/opportunities?sent=1", status_code=303)
 
 
@@ -186,7 +186,7 @@ def test_qbittorrent():
 
 @app.post("/telegram/test")
 def test_telegram():
-    if not (settings.telegram_bot_token and settings.telegram_chat_id):
+    if not telegram_configured():
         raise HTTPException(status_code=400, detail="TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID manquant")
     try:
         send_message("✅ SpaceSeed est bien connecté à Telegram")

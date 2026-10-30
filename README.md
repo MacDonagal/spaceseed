@@ -147,6 +147,8 @@ curl -X POST -u "admin:$(grep ^SPACESEED_PASSWORD .env | cut -d= -f2)" http://12
 
 - Chaque torrent n'est signalé qu'une fois. Ce souvenir est conservé `SCAN_HISTORY_DAYS` jours.
 - L'alerte indique si l'envoi automatique a déjà transmis le torrent à qBittorrent.
+- Sinon, elle propose un bouton **Télécharger**. Il applique le contrôle C411, ne répond qu'à `TELEGRAM_CHAT_ID` et reste utilisable tant que le torrent figure dans les opportunités.
+- SpaceSeed interroge Telegram pour recevoir les clics : aucun port entrant n'est nécessaire. Un même bot ne peut alimenter qu'une seule instance de SpaceSeed.
 - Une panne de Telegram n'interrompt pas le scan : les alertes manquantes repartent au scan suivant.
 
 ## Sécurité

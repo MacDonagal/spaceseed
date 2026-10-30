@@ -8,11 +8,15 @@ from .c411 import download_block_reason
 from .config import settings
 from .database import SessionLocal
 from .models import Grab, Opportunity
-from .qbittorrent import QBittorrentError, get_qbittorrent
+from .qbittorrent import QBittorrentError, QBittorrentService, get_qbittorrent
 
 logger = logging.getLogger(__name__)
 MAX_ATTEMPTS = 3
 GIB = 1024 ** 3
+
+
+class DownloadBlocked(RuntimeError):
+    pass
 
 
 def save_grab(opportunity: Opportunity, *, source: str, status: str, error: str | None = None) -> None:
@@ -35,6 +39,19 @@ def save_grab(opportunity: Opportunity, *, source: str, status: str, error: str 
             db.commit()
     except SQLAlchemyError:
         logger.exception("Envoi non enregistré | titre=%s", opportunity.title)
+
+
+def send_opportunity(opportunity: Opportunity, service: QBittorrentService, source: str) -> None:
+    """Envoi à la demande de l'utilisateur, soumis au contrôle C411."""
+    reason = download_block_reason(opportunity.size_bytes, opportunity.freeleech)
+    if reason:
+        raise DownloadBlocked(reason)
+
+    service.add_from_url(opportunity.download_url)
+    # Enregistré pour que l'envoi automatique ne le renvoie pas.
+    save_grab(opportunity, source=source, status="sent")
+    # Le titre plutôt que l'URL, qui contient la clé API ou le passkey.
+    logger.info("Torrent envoyé à qBittorrent | source=%s | titre=%s", source, opportunity.title)
 
 
 def _candidates(seen_at: datetime) -> list[Opportunity]:
